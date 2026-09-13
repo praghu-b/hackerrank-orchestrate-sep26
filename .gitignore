@@ -35,6 +35,8 @@ ENV/
 
 # Output zip and predictions
 code.zip
+output.csv
+
 
 # IDE & OS
 .vscode/

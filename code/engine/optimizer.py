@@ -117,11 +117,23 @@ def evaluate_request(
         else:
             # Check with spending changes
             deficit = req_amt - amount_safe_to_pay
-            for combo in spending_combos:
-                total_saved = sum(c.saved_amount for c in combo)
-                if total_saved >= deficit - 1e-4:
-                    changes_str = "|".join(c.key for c in combo)
+            valid_combos = [
+                c for c in spending_combos
+                if sum(x.saved_amount for x in c) >= deficit - 1e-4
+            ]
+            valid_combos.sort(key=lambda c: (sum(x.saved_amount for x in c) - deficit, len(c)))
+
+            for combo in valid_combos:
+                stopped_ids = {c.event_id for c in combo if c.action_type == "stop"}
+                reduced_evs = {c.event_id: c.new_amount for c in combo if c.action_type == "reduce_to"}
+                combo_daily_changes, _ = project_daily_cashflow(
+                    profile, events, insights, req_date, stopped_ids, reduced_evs
+                )
+                safe_combo, min_p = is_schedule_safe(init_bal, min_bal, combo_daily_changes, {0: req_amt})
+                if safe_combo or (init_bal - req_amt + sum(c.saved_amount for c in combo) >= min_bal):
+                    changes_str = "|".join(sorted([c.key for c in combo], key=lambda k: (0 if k.startswith("stop") else 1, k)))
                     candidates.append(CandidatePlan(
+
                         method=METHOD_FULL_PAYMENT,
                         payment_plan_str=f"{req_date.isoformat()}:{req_amt:.2f}".rstrip("0").rstrip(".") if req_amt % 1 != 0 else f"{req_date.isoformat()}:{int(req_amt)}",
                         schedule=[(req_date, req_amt)],
@@ -132,9 +144,10 @@ def evaluate_request(
                         payment_count=1,
                         payment_option_id=None,
                         is_safe=True,
-                        min_projected_balance=init_bal - req_amt + total_saved,
+                        min_projected_balance=min_p,
                     ))
                     break
+
 
     # --- Method B: installments ---
     if METHOD_INSTALLMENTS in methods_considered:

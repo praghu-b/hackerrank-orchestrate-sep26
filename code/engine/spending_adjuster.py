@@ -17,9 +17,11 @@ class SpendingOption:
         if self.action_type == "stop":
             return f"stop:{self.event_id}"
         else:
-            # Format float cleanly (integer if no decimal, else 2 decimal places)
-            val_str = f"{self.new_amount:.2f}".rstrip("0").rstrip(".") if self.new_amount is not None else ""
+            if self.new_amount is None:
+                return f"reduce_to:{self.event_id}"
+            val_str = f"{self.new_amount:.2f}" if (self.new_amount % 1 != 0) else f"{int(self.new_amount)}"
             return f"reduce_to:{self.event_id}:{val_str}"
+
 
 def find_candidate_spending_adjustments(
     profile: FinancialProfile,
@@ -30,13 +32,17 @@ def find_candidate_spending_adjustments(
     stop_cats = set(profile.expense_categories_user_is_willing_to_stop) - protect
     reduce_cats = set(profile.expense_categories_user_is_willing_to_reduce) - protect
 
-    candidates: List[SpendingOption] = []
-    seen_events: Set[str] = set()
-
+    # Group by category and select only the latest event in each flexible category
+    latest_by_cat: Dict[str, FinancialEvent] = {}
     for e in flexible_events:
-        if e.event_id in seen_events:
-            continue
-        seen_events.add(e.event_id)
+        cat = e.category
+        if cat not in latest_by_cat:
+            latest_by_cat[cat] = e
+        elif e.event_date and latest_by_cat[cat].event_date and e.event_date > latest_by_cat[cat].event_date:
+            latest_by_cat[cat] = e
+
+    candidates: List[SpendingOption] = []
+    for e in latest_by_cat.values():
 
         # Candidate for stop
         if e.category in stop_cats and e.flexibility in {"stoppable", "reducible_or_stoppable"}:
@@ -50,10 +56,10 @@ def find_candidate_spending_adjustments(
 
         # Candidate for reduce
         if e.category in reduce_cats and e.flexibility in {"reducible", "reducible_or_stoppable"}:
-            # Default reduction: 50%
-            new_amt = round(e.converted_amount * 0.5, 2)
-            if e.minimum_allowed_amount is not None and new_amt < e.minimum_allowed_amount:
+            if e.minimum_allowed_amount is not None:
                 new_amt = e.minimum_allowed_amount
+            else:
+                new_amt = round(e.converted_amount * 0.5, 2)
             saved = e.converted_amount - new_amt
             if saved > 0:
                 candidates.append(SpendingOption(
@@ -63,6 +69,7 @@ def find_candidate_spending_adjustments(
                     saved_amount=saved,
                     desc=e.description,
                 ))
+
 
     # Sort descending by saved amount
     candidates.sort(key=lambda x: x.saved_amount, reverse=True)

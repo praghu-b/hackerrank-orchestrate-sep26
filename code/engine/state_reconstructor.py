@@ -38,10 +38,15 @@ class ReconstructedState:
 def reconstruct_user_state(
     profile: FinancialProfile,
     events: List[FinancialEvent],
-    insights: MessageInsights,
+    insights: Optional[MessageInsights],
     request_date: date,
 ) -> ReconstructedState:
+    """Reconstructs the active financial state of a user."""
+    if insights is None:
+        insights = MessageInsights(profile.user_id)
+
     initial_balance = profile.current_available_balance
+
     minimum_balance = profile.minimum_balance_to_keep
 
     # Pending debits (must be reserved)
@@ -57,15 +62,20 @@ def reconstruct_user_state(
     )
     has_ongoing_salary = (not insights.contract_ended) and (not has_final_payroll_desc)
 
-    # Check for scheduled or settled salary
+    # Check for scheduled or settled salary (excluding commissions, bonuses, arrears)
+    def is_recurring_salary(e: FinancialEvent) -> bool:
+        desc = e.description.lower()
+        return not any(w in desc for w in ["commission", "bonus", "arrears", "final"])
+
     scheduled_salary = [
         e for e in events
-        if e.category == "salary" and e.direction == "credit" and e.status == "scheduled"
+        if e.category == "salary" and e.direction == "credit" and e.status == "scheduled" and is_recurring_salary(e)
     ]
     settled_salary = [
         e for e in events
-        if e.category == "salary" and e.direction == "credit" and e.status == "settled"
+        if e.category == "salary" and e.direction == "credit" and e.status == "settled" and is_recurring_salary(e)
     ]
+
 
     if scheduled_salary:
         sched = scheduled_salary[0]

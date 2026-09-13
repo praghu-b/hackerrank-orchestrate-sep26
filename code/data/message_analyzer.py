@@ -8,7 +8,7 @@ Applies conflict-resolution precedence:
 import re
 from datetime import date, datetime
 from typing import Dict, List, Optional, Any
-from code.models.schemas import Message
+from code.models.schemas import Message, FinancialEvent
 
 class MessageInsights:
     def __init__(self, user_id: str):
@@ -103,3 +103,12 @@ def analyze_user_messages(messages: List[Message], user_id: str) -> MessageInsig
                 insights.notes.append(f"Updated salary to {amt}")
 
     return insights
+
+def analyze_all_messages(messages: List[Message], events_by_user: Optional[Dict[str, List[FinancialEvent]]] = None) -> Dict[str, MessageInsights]:
+    insights_by_user: Dict[str, MessageInsights] = {}
+    msgs_by_user: Dict[str, List[Message]] = {}
+    for m in messages:
+        msgs_by_user.setdefault(m.user_id, []).append(m)
+    for uid, u_msgs in msgs_by_user.items():
+        insights_by_user[uid] = analyze_user_messages(u_msgs, uid)
+    return insights_by_user

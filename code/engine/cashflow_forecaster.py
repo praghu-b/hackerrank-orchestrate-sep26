@@ -35,6 +35,8 @@ def project_daily_cashflow(
         stopped_event_ids = set()
     if reduced_events is None:
         reduced_events = {}
+    if insights is None:
+        insights = MessageInsights(profile.user_id)
 
     state = reconstruct_user_state(profile, events, insights, request_date)
     daily_changes: Dict[int, float] = defaultdict(float)
@@ -113,8 +115,9 @@ def project_daily_cashflow(
                     daily_changes[offset] -= amt
                 proj_d = add_months(proj_d, 1)
 
-    # 4. Variable streams: groceries, transport, dining
-    for vcat, def_interval in [("groceries", 7), ("transport", 7), ("dining", 14)]:
+    # 4. Essential variable streams: groceries, transport
+    for vcat, def_interval in [("groceries", 7), ("transport", 7)]:
+
         vevs = [e for e in state.recurring_debits if e.category == vcat]
         if vevs:
             vevs_sorted = sorted(vevs, key=lambda x: x.event_date)
@@ -126,8 +129,20 @@ def project_daily_cashflow(
             else:
                 intv = def_interval
 
-            recent_amts = [e.converted_amount for e in vevs_sorted[-4:]]
-            avg_amt = sum(recent_amts) / len(recent_amts)
+            # Check if any event in this variable category is stopped or reduced
+            if any(e.event_id in stopped_event_ids for e in vevs):
+                continue
+
+            latest_ev = vevs_sorted[-1]
+            if latest_ev.event_id in reduced_events:
+                avg_amt = reduced_events[latest_ev.event_id]
+            else:
+                recent_amts = [
+                    (reduced_events[e.event_id] if e.event_id in reduced_events else e.converted_amount)
+                    for e in vevs_sorted[-4:]
+                ]
+                avg_amt = sum(recent_amts) / len(recent_amts)
+
 
             last_d = vevs_sorted[-1].event_date
             proj_d = last_d + timedelta(days=intv)

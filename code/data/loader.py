@@ -173,3 +173,20 @@ def load_requests(filename: str = "requests.csv", dataset_dir: Path = DATASET_DI
                 request_text=r["request_text"].strip(),
             ))
     return requests
+
+def load_all_data(dataset_dir: Path = DATASET_DIR) -> Tuple[
+    Dict[str, FinancialProfile],
+    Dict[str, List[FinancialEvent]],
+    Dict[Tuple[str, str, str], float],
+    Dict[str, List[PaymentOption]],
+    Dict[str, any],
+]:
+    from code.data.message_analyzer import analyze_all_messages
+    profiles = load_financial_profiles(dataset_dir)
+    rates = load_exchange_rates(dataset_dir)
+    events_by_user = load_financial_events(profiles, rates, dataset_dir)
+    payment_options = load_payment_options(dataset_dir)
+    messages = load_messages(dataset_dir)
+    message_insights = analyze_all_messages(messages, events_by_user)
+    return profiles, events_by_user, rates, payment_options, message_insights
+

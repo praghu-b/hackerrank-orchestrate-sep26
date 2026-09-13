@@ -57,6 +57,13 @@ def package_code(repo_root: Path = REPO_ROOT, output_zip: Path = ZIP_PATH) -> in
         if usage_md.exists():
             zf.write(usage_md, arcname="evaluation/usage_report.md")
 
+        # 3. Add README.md as requested by submission upload instructions
+        readme_md = repo_root / "README.md"
+        if readme_md.exists():
+            zf.write(readme_md, arcname="README.md")
+            zf.write(readme_md, arcname="code/README.md")
+
+
 
     size_kb = output_zip.stat().st_size / 1024.0
     print(f"Successfully packaged {packed_count} source files into {output_zip.name} ({size_kb:.1f} KB)")
